@@ -1,6 +1,8 @@
 # Space Control
 ## How to run
 ```
+python -m venv .venv  
+source .venv/bin/activate
 pip install -r requirements.txt            # pygame-ce + pytest
 pip install -r requirements-gesture.txt    # tensorflow, tf-keras, opencv, numpy (needed to play)
 
