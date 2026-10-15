@@ -10,8 +10,10 @@ import threading
 from collections import Counter, deque
 
 # Class names students give their gestures in Teachable Machine. Matching is
-# case-insensitive, so "Left", "LEFT" and "left" all work. Anything else = idle.
-LABEL_TO_DIR = {"left": -1, "right": 1, "idle": 0, "neutral": 0, "none": 0}
+# case-insensitive, so "L", "Left" and "LEFT" all work. Anything else = neutral.
+# The team model uses the single letters L, R and N.
+LABEL_TO_DIR = {"l": -1, "left": -1, "r": 1, "right": 1,
+                "n": 0, "neutral": 0, "idle": 0, "none": 0}
 
 
 def parse_labels(text: str) -> list[str]:
@@ -28,6 +30,25 @@ def parse_labels(text: str) -> list[str]:
 
 def label_to_direction(label: str) -> int:
     return LABEL_TO_DIR.get(label.strip().lower(), 0)
+
+
+def direction_letter(direction: int) -> str:
+    """-1/0/+1 -> "L"/"N"/"R", for showing what the model sees."""
+    return {-1: "L", 1: "R"}.get(direction, "N")
+
+
+def check_labels(labels: list[str]) -> str | None:
+    """Return a problem description if the model can't steer the ship, else None.
+
+    A model needs a left class, a right class and an explicit neutral class:
+    a classifier always picks something, so without neutral the ship never stops.
+    """
+    known = {lab: LABEL_TO_DIR[lab] for lab in labels if lab in LABEL_TO_DIR}
+    missing = [name for name, d in (("L", -1), ("R", 1), ("N", 0)) if d not in known.values()]
+    if missing:
+        found = ", ".join(lab.upper() for lab in labels) or "none"
+        return f"labels.txt needs classes L, R and N. Missing {', '.join(missing)} (found {found})"
+    return None
 
 
 class Smoother:

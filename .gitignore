@@ -3,4 +3,5 @@ __pycache__/
 data/leaderboard.json
 models/*/
 !models/README.md
+.venv.DS_Store
 .venv

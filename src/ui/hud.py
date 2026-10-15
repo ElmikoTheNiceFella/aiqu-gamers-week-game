@@ -1,7 +1,7 @@
 """In-game HUD: score on the left, three hearts on the right.
 
     hud = Hud()
-    hud.update(dt, score, lives)   # call every frame
+    hud.update(dt, score, lives, wave)   # call every frame; wave is optional
     hud.draw(surface)
 
 Losing a life blinks the heart that just broke and nudges it sideways.
@@ -24,15 +24,18 @@ HEART_GAP = 4
 
 
 class Hud:
-    def __init__(self, max_lives: int = MAX_LIVES):
+    def __init__(self, max_lives: int = MAX_LIVES, total_waves: int = 5):
         self.max_lives = max_lives
+        self.total_waves = total_waves
         self.score = 0
         self.lives = max_lives
         self.t = 0.0
         self._hit_idx = -1
         self._hit_timer = 0.0
+        self.wave = None
 
-    def update(self, dt, score, lives):
+    def update(self, dt, score, lives, wave=None):
+        self.wave = wave
         self.t += dt
         lives = max(0, min(self.max_lives, lives))
         if lives < self.lives:
@@ -53,6 +56,10 @@ class Hud:
 
         draw.draw_small(surf, "SCORE", (8, 5), T.DIM)
         draw.draw_small(surf, f"{self.score:06d}", (8, 15), T.YELLOW)
+        if self.wave is not None:
+            draw.draw_small(surf, "WAVE", (w // 2 - 14, 5), T.DIM, anchor="midtop")
+            draw.draw_small(surf, f"{self.wave}/{self.total_waves}", (w // 2 - 14, 15), T.CYAN,
+                            anchor="midtop")
         self._draw_hearts(surf, w)
 
     def _draw_hearts(self, surf, w):

@@ -12,6 +12,7 @@ from . import draw
 
 class Button:
     def __init__(self, label, rect, action, color=T.MAGENTA, size=16):
+        self.enabled = True  # a disabled button is drawn dim and never fires
         self.label = label
         self.rect = pygame.Rect(rect)
         self.action = action
@@ -19,6 +20,7 @@ class Button:
         self.size = size
 
     def draw(self, surf, focused, t):
+        focused = focused and self.enabled
         c = self.color if focused else draw.mix(self.color, T.INK, 0.55)
         fill = draw.mix(T.PANEL, self.color, 0.22) if focused else T.PANEL
         draw.neon_panel(surf, self.rect, c, fill=fill, chamfer=3, glow=focused)
@@ -51,15 +53,19 @@ class Menu:
             elif e.key in (pygame.K_DOWN, pygame.K_s):
                 self.index = (self.index + 1) % len(self.buttons)
             elif e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
-                return self.buttons[self.index].action
+                return self._fire(self.buttons[self.index])
         elif e.type == pygame.MOUSEMOTION:
             self._hover(T.to_logical(e.pos))
         elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             pos = T.to_logical(e.pos)
             self._hover(pos)
             if self.buttons[self.index].rect.collidepoint(pos):
-                return self.buttons[self.index].action
+                return self._fire(self.buttons[self.index])
         return None
+
+    @staticmethod
+    def _fire(button):
+        return button.action if button.enabled else None
 
     def _hover(self, pos):
         for i, b in enumerate(self.buttons):

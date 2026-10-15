@@ -158,8 +158,9 @@ class Starfield:
         for s in self.stars:
             s[1] = (s[1] + self.LAYERS[s[2]][0] * dt) % self.h
 
-    def draw(self, surf):
-        surf.fill(T.BG)
+    def draw(self, surf, fill=True):
+        if fill:
+            surf.fill(T.BG)
         for x, y, layer, phase in self.stars:
             _, color, size = self.LAYERS[layer]
             if layer == 2 and math.sin(self.t * 3 + phase) < -0.4:

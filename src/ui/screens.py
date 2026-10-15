@@ -5,7 +5,10 @@
     draw(surface)
 
 The host game decides what each action means ("play", "scores", "back",
-"restart", "menu"). Screens never change game state themselves.
+"restart", "menu", "retry"). Screens never change game state themselves.
+
+The start menu and the signal-lost overlay read a gesture link (anything with
+status, status_text, detail, connected and letter; see src/gesture/link.py).
 """
 from __future__ import annotations
 
@@ -26,23 +29,52 @@ def _blink(t, hz=2.0):
     return int(t * hz * 2) % 2 == 0
 
 
+def wrap(text, width=26, lines=3):
+    """Split a message into at most `lines` lines of `width` 8px characters."""
+    out, line = [], ""
+    for word in text.upper().split():
+        if line and len(line) + 1 + len(word) > width:
+            out.append(line)
+            line = word
+        else:
+            line = f"{line} {word}".strip()
+    out.append(line)
+    out = [o[:width] for o in out]
+    if len(out) > lines:
+        out = out[:lines]
+        out[-1] = out[-1][:width - 3] + "..."
+    return out
+
+
+LINK_COLORS = {"ready": T.CYAN, "error": T.PINK}
+
+
 # ------------------------------------------------------------------ start
 class StartMenu:
-    def __init__(self, stars: draw.Starfield | None = None):
+    """Title, PLAY / SCORES and, with a gesture link, its connection status.
+
+    PLAY stays disabled until the link is connected. Actions: "play", "scores",
+    "retry" (R while the link reports an error).
+    """
+
+    def __init__(self, stars: draw.Starfield | None = None, link=None):
         self.stars = stars or draw.Starfield()
+        self.link = link
         self.t = 0.0
-        self.menu = Menu([
-            Button("PLAY", (CX - 80, 186, 160, 30), "play", T.MAGENTA),
-            Button("SCORES", (CX - 80, 224, 160, 30), "scores", T.CYAN),
-        ])
+        self.play = Button("PLAY", (CX - 80, 186, 160, 30), "play", T.MAGENTA)
+        self.menu = Menu([self.play, Button("SCORES", (CX - 80, 224, 160, 30), "scores", T.CYAN)])
 
     def handle_event(self, e):
+        if (self.link is not None and self.link.status == "error"
+                and e.type == pygame.KEYDOWN and e.key == pygame.K_r):
+            return "retry"
         return self.menu.handle_event(e)
 
     def update(self, dt):
         self.t += dt
         self.stars.update(dt)
         self.menu.update(dt)
+        self.play.enabled = self.link is None or self.link.connected
 
     def draw(self, surf):
         self.stars.draw(surf)
@@ -69,8 +101,42 @@ class StartMenu:
 
         draw.draw_small(surf, T.TAGLINE, (CX, 154), T.SOFT, anchor="midtop")
         self.menu.draw(surf)
+        if self.link is None:
+            if _blink(self.t, 1.0):
+                draw.draw_small(surf, "PRESS ENTER", (CX, 282), T.DIM, anchor="midtop")
+            return
+        self._draw_link(surf)
+
+    def _draw_link(self, surf):
+        link = self.link
+        color = LINK_COLORS.get(link.status, T.YELLOW)
+        if link.status == "ready" and not link.connected:
+            color = T.YELLOW
+        error = link.status == "error"
+        panel = pygame.Rect(CX - 112, 264, 224, 58 if error else 48)
+        draw.neon_panel(surf, panel, draw.darker(color, 0.3), glow=False)
+        dots = "." * (int(self.t * 3) % 4) if link.status not in ("ready", "error") else ""
+        draw.draw_small(surf, f"AI LINK: {link.status_text}{dots}", (panel.x + 10, panel.y + 9), color)
+        if link.connected:
+            draw.draw_small(surf, "SEES", (panel.x + 10, panel.y + 25), T.DIM)
+            for i, letter in enumerate("LNR"):
+                r = pygame.Rect(panel.x + 52 + i * 22, panel.y + 21, 18, 16)
+                on = letter == link.letter
+                draw.neon_panel(surf, r, T.CYAN if on else T.PURPLE, chamfer=2, glow=False, gloss=False)
+                draw.draw_small(surf, letter, r.center, T.WHITE if on else T.DIM, anchor="center")
+            draw.draw_small(surf, "MOVE ME!", (panel.right - 10, panel.y + 25), T.DIM, anchor="topright")
+        else:
+            lines = wrap(link.detail or "PLEASE WAIT", lines=3 if error else 1)
+            for i, line in enumerate(lines):
+                draw.draw_small(surf, line, (panel.x + 10, panel.y + 21 + i * 10), T.SOFT)
+        if link.status == "error":
+            msg = "R TO RETRY"
+        elif link.connected:
+            msg = "PRESS ENTER"
+        else:
+            msg = "SHOW YOUR HAND TO THE CAMERA" if link.status == "ready" else "WARMING UP THE AI"
         if _blink(self.t, 1.0):
-            draw.draw_small(surf, "PRESS ENTER", (CX, 282), T.DIM, anchor="midtop")
+            draw.draw_small(surf, msg, (CX, panel.bottom + 10), T.DIM, anchor="midtop")
 
 
 # ------------------------------------------------------------ leaderboard
@@ -154,14 +220,63 @@ class PauseOverlay:
             draw.draw_small(surf, "PRESS P TO RESUME", (CX, panel.bottom - 18), T.DIM, anchor="midtop")
 
 
+# ------------------------------------------------------------ wave banner
+def draw_wave_banner(surf, number, total, name, t):
+    """The "WAVE n" card shown at the start of each wave (over the game)."""
+    panel = pygame.Rect(0, 0, 220, 78)
+    panel.center = (CX, H // 2 - 20)
+    draw.neon_panel(surf, panel, T.MAGENTA if number < total else T.YELLOW)
+    draw.draw_text(surf, f"WAVE {number}", 24, (CX, panel.y + 12), top=T.YELLOW, bottom=T.ORANGE,
+                   shadow=T.MAGENTA, depth=2, anchor="midtop")
+    draw.draw_small(surf, name, (CX, panel.y + 46), T.CYAN, anchor="midtop")
+    label = "FINAL WAVE" if number == total else f"OF {total}"
+    if _blink(t, 2.0) or number < total:
+        draw.draw_small(surf, label, (CX, panel.y + 60), T.DIM if number < total else T.PINK,
+                        anchor="midtop")
+
+
+# ------------------------------------------------------------ signal lost
+class SignalLostOverlay:
+    """Shown over the frozen game while the gesture link is down. The game
+    resumes by itself when labels flow again. Action: "retry" on R after an error."""
+
+    def __init__(self, link):
+        self.link = link
+        self.t = 0.0
+
+    def handle_event(self, e):
+        if self.link.status == "error" and e.type == pygame.KEYDOWN and e.key == pygame.K_r:
+            return "retry"
+        return None
+
+    def update(self, dt):
+        self.t += dt
+
+    def draw(self, surf):
+        draw.dim(surf, 170)
+        error = self.link.status == "error"
+        lines = wrap(self.link.detail, lines=2) if error else ["SHOW YOUR HAND", "TO THE CAMERA"]
+        panel = pygame.Rect(0, 0, 250, 96)
+        panel.center = (CX, H // 2)
+        draw.neon_panel(surf, panel, T.PINK if _blink(self.t, 1.0) else T.MAGENTA)
+        draw.draw_text(surf, "SIGNAL LOST", 16, (CX, panel.y + 14), top=T.WHITE, bottom=T.PINK,
+                       shadow=T.PURPLE, depth=2, anchor="midtop")
+        for i, line in enumerate(lines):
+            draw.draw_small(surf, line, (CX, panel.y + 44 + i * 12), T.SOFT, anchor="midtop")
+        draw.draw_small(surf, "R TO RETRY" if error else "GAME RESUMES BY ITSELF",
+                        (CX, panel.bottom - 18), T.DIM, anchor="midtop")
+
+
 # -------------------------------------------------------------- game over
 class GameOverScreen:
     """Shows the final score. If it makes the leaderboard, asks for 3 initials first.
 
+    won=True (all waves cleared) swaps GAME OVER for YOU BEAT THE AI.
     Actions: "restart", "menu". `self.saved_rank` holds the rank (0-based) once saved.
     """
 
-    def __init__(self, score, leaderboard):
+    def __init__(self, score, leaderboard, won=False):
+        self.won = won
         self.score = score
         self.lb = leaderboard
         self.best = max(leaderboard.best, score)
@@ -201,10 +316,16 @@ class GameOverScreen:
     # ---- drawing
     def draw(self, surf):
         draw.dim(surf, 205)
-        draw.draw_text(surf, "GAME", 32, (CX, 22), top=(255, 160, 235), bottom=T.MAGENTA,
-                       shadow=T.PURPLE, depth=3, anchor="midtop")
-        draw.draw_text(surf, "OVER", 32, (CX, 62), top=(255, 160, 235), bottom=T.MAGENTA,
-                       shadow=T.PURPLE, depth=3, anchor="midtop")
+        if self.won:
+            draw.draw_text(surf, "YOU BEAT", 24, (CX, 26), top=T.YELLOW, bottom=T.ORANGE,
+                           shadow=T.MAGENTA, depth=3, anchor="midtop")
+            draw.draw_text(surf, "THE AI", 32, (CX, 60), top=(255, 140, 235), bottom=T.MAGENTA,
+                           shadow=T.PURPLE, depth=3, anchor="midtop")
+        else:
+            draw.draw_text(surf, "GAME", 32, (CX, 22), top=(255, 160, 235), bottom=T.MAGENTA,
+                           shadow=T.PURPLE, depth=3, anchor="midtop")
+            draw.draw_text(surf, "OVER", 32, (CX, 62), top=(255, 160, 235), bottom=T.MAGENTA,
+                           shadow=T.PURPLE, depth=3, anchor="midtop")
 
         panel = pygame.Rect(CX - 105, 112, 210, 70)
         draw.neon_panel(surf, panel, T.CYAN)

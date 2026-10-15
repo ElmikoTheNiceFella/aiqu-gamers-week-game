@@ -1,0 +1,22 @@
+# BEAT THE AI settings. Paths are relative to this file's folder.
+
+[model]
+# Teachable Machine export: Export Model > TensorFlow > Keras.
+# The folder must hold keras_model.h5 and labels.txt with the classes L, R and N.
+dir = "models/keras-model"
+# Predictions below this confidence count as N (neutral).
+min_confidence = 0.8
+# Majority vote over this many predictions to stop the ship jittering.
+smoothing_window = 5
+# How a webcam frame becomes the model's square 224x224 input:
+# "center" crops the middle square (matches the Teachable Machine webcam),
+# "squash" resizes the whole frame.
+crop = "center"
+
+[camera]
+# 0 is the built-in webcam; try 1, 2... for external cameras.
+index = 0
+# Flip the image like a mirror, as the Teachable Machine preview does.
+mirror = true
+# Predictions per second.
+fps = 15

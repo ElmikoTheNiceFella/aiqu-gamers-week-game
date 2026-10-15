@@ -1,15 +1,15 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame  # noqa: E402
 
-from input_source import (Smoother, SharedDirection, label_to_direction,  # noqa: E402
+from src.input_source import (Smoother, SharedDirection, label_to_direction,  # noqa: E402
                           parse_labels)
-from leaderboard import MAX_ENTRIES, Leaderboard, clean_name  # noqa: E402
+from src.leaderboard import MAX_ENTRIES, Leaderboard, clean_name  # noqa: E402
 
 
 def board(tmp_path):
@@ -76,14 +76,14 @@ def test_shared_direction():
 def test_sprites_are_rectangular():
     pygame.init()
     pygame.display.set_mode((8, 8))
-    from ui import sprites
+    from src.ui import sprites
     for name in sprites.BITMAPS:
         sprites.get(name)  # asserts on ragged rows
 
 
 def test_hud_flashes_on_life_lost():
     pygame.init()
-    from ui.hud import Hud
+    from src.ui.hud import Hud
     h = Hud()
     h.update(0.0, 0, 3)
     h.update(0.016, 0, 2)
@@ -93,7 +93,7 @@ def test_hud_flashes_on_life_lost():
 def test_game_over_initials_flow(tmp_path):
     pygame.init()
     pygame.display.set_mode((8, 8))
-    from ui import GameOverScreen
+    from src.ui import GameOverScreen
     lb = board(tmp_path)
     g = GameOverScreen(300, lb)
     assert g.entering
@@ -104,3 +104,20 @@ def test_game_over_initials_flow(tmp_path):
     assert not g.entering and lb.entries == [("ABC", 300)]
     act = g.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, unicode="\r"))
     assert act == "restart"
+
+
+def test_teachable_machine_letters():
+    from src.input_source import direction_letter
+    assert parse_labels("0 L\n1 R\n2 N\n") == ["l", "r", "n"]
+    assert [label_to_direction(x) for x in ("L", "r", "N")] == [-1, 1, 0]
+    assert [direction_letter(d) for d in (-1, 0, 1)] == ["L", "N", "R"]
+
+
+def test_check_labels():
+    from src.input_source import check_labels
+    assert check_labels(["l", "r", "n"]) is None
+    assert check_labels(["left", "right", "idle"]) is None
+    assert "R" in check_labels(["l", "n"])
+    assert "N" in check_labels(["l", "r"])
+    assert "L" in check_labels(["r", "thumbs up", "n"])
+    assert check_labels([]) is not None
